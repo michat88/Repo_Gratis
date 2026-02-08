@@ -17,7 +17,7 @@ class LayarKacaProvider : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // Header khusus meniru browser Linux Chrome agar lolos validasi keamanan
+    // Header khusus meniru browser Linux Chrome (sesuai analisa cURL)
     private val turboHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
         "Sec-Fetch-Dest" to "iframe",
@@ -48,7 +48,6 @@ class LayarKacaProvider : MainAPI() {
     data class Lk21SearchItem(val title: String, val slug: String, val poster: String?, val type: String?, val year: Int?, val quality: String?)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Menggunakan mirror search API (gudangvape)
         val searchUrl = "https://gudangvape.com/search.php?s=$query&page=1"
         val headers = mapOf(
             "Origin" to mainUrl,
@@ -116,7 +115,6 @@ class LayarKacaProvider : MainAPI() {
         var response = app.get(cleanUrl)
         var document = response.document
 
-        // Handle Redirect (Landing Page)
         val redirectButton = document.select("a:contains(Buka Sekarang), a.btn:contains(Nontondrama)").first()
         if (redirectButton != null) {
             val newUrl = redirectButton.attr("href")
@@ -180,24 +178,22 @@ class LayarKacaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // data adalah URL halaman detail film
         val document = app.get(data).document
 
         // Cari iframe utama
         val rawIframeUrl = document.select("iframe#main-player").attr("src")
         var mainIframeUrl = fixUrl(rawIframeUrl)
 
-        // Fallback jika iframe utama kosong, cek list player
+        // Fallback jika iframe utama kosong
         if (mainIframeUrl.isEmpty()) {
             mainIframeUrl = document.select("ul#player-list li a").firstOrNull()?.attr("data-url")?.let { fixUrl(it) } ?: ""
         }
 
         if (mainIframeUrl.isNotBlank()) {
             if (mainIframeUrl.contains("playeriframe.sbs") || mainIframeUrl.contains("turbovid") || mainIframeUrl.contains("emturbovid")) {
-                // Gunakan ekstraktor khusus untuk proteksi baru (TurboVid)
+                // Ekstraktor khusus TurboVid
                 extractTurboVid(mainIframeUrl, data, callback)
             } else {
-                // Gunakan ekstraktor standar Cloudstream untuk host lain
                 loadExtractor(mainIframeUrl, data, subtitleCallback, callback)
             }
         }
@@ -207,16 +203,15 @@ class LayarKacaProvider : MainAPI() {
     // --- CUSTOM EXTRACTOR FOR TURBOVID / PLAYERIFRAME ---
     private suspend fun extractTurboVid(url: String, referer: String, callback: (ExtractorLink) -> Unit) {
         try {
-            // Langkah 1: Request ke Wrapper (playeriframe.sbs)
-            // Header Referer PENTING di sini agar lolos validasi "pintu depan"
+            // 1. Request ke Wrapper (playeriframe.sbs)
             val wrapperHeaders = turboHeaders.toMutableMap()
             wrapperHeaders["Referer"] = referer
 
             val responseWrapper = app.get(url, headers = wrapperHeaders)
-            var targetUrl = responseWrapper.url // URL setelah redirect (biasanya ke turbovidhls.com)
+            var targetUrl = responseWrapper.url
             var pageContent = responseWrapper.text
 
-            // Jika response masih iframe wrapper (belum redirect), cari src iframe di dalamnya
+            // Cek jika ada inner iframe (turbovidhls.com)
             val soup = responseWrapper.document
             val innerIframe = soup.select("iframe").attr("src")
             if (innerIframe.isNotEmpty() && !targetUrl.contains("turbovid") && !targetUrl.contains("emturbovid")) {
@@ -224,31 +219,27 @@ class LayarKacaProvider : MainAPI() {
                 pageContent = app.get(targetUrl, headers = mapOf("Referer" to "https://playeriframe.sbs/")).text
             }
 
-            // Langkah 2: Parsing halaman akhir untuk mencari konfigurasi JWPlayer (.m3u8)
+            // 2. Ambil Link M3U8
             val m3u8Regex = Regex("(?i)(?:file|source)\\s*:\\s*[\"']([^\"']+\\.m3u8[^\"']*)[\"']")
             val match = m3u8Regex.find(pageContent)
 
             if (match != null) {
                 val m3u8Url = match.groupValues[1]
                 
-                // Tentukan Origin header berdasarkan host target (Fix Error 2004)
-                val host = try { URI(targetUrl).host } catch (e: Exception) { "" }
-                val origin = if (host.isNotEmpty()) "https://$host" else "https://turbovidhls.com"
+                // --- LOGIKA HEADER FINAL (BERDASARKAN ANALISIS AVATAR) ---
+                // Server 'turbosplayer' dan 'cdn4' sangat ketat soal Origin.
+                // Kita hardcode Origin ke 'https://turbovidhls.com' agar aman.
+                val origin = "https://turbovidhls.com"
 
-                // HEADER VIDEO FINAL
-                // Origin: Wajib ada
-                // Referer: Diset ke halaman player (turbovidhls), BUKAN lk21
-                // Sec-Fetch-*: Agar request terlihat otentik seperti browser
                 val videoHeaders = mapOf(
                     "Origin" to origin,
-                    "Referer" to targetUrl,
+                    "Referer" to "$origin/", // Referer diset sama dengan Origin agar konsisten
                     "User-Agent" to turboHeaders["User-Agent"]!!,
                     "Accept" to "*/*",
                     "Sec-Fetch-Site" to "cross-site",
                     "Sec-Fetch-Mode" to "cors"
                 )
 
-                // Langkah 3: Gunakan newExtractorLink (Cloudstream Standard)
                 callback.invoke(
                     newExtractorLink(
                         source = "LK21 VIP",
@@ -256,7 +247,7 @@ class LayarKacaProvider : MainAPI() {
                         url = m3u8Url,
                         type = ExtractorLinkType.M3U8
                     ) {
-                        this.referer = targetUrl
+                        this.referer = "$origin/"
                         this.quality = Qualities.Unknown.value
                         this.headers = videoHeaders
                     }
