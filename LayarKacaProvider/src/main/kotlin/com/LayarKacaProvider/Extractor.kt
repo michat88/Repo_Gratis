@@ -1,4 +1,4 @@
-package com.LayarKacaProvider
+package com.LayarKacaProvide
 
 import android.util.Base64
 import com.lagradost.api.Log
