@@ -9,11 +9,5 @@ class JavHeyPlugin: Plugin() {
     override fun load(context: Context) {
         registerMainAPI(JavHey())
 
-        registerExtractorAPI(Hglink())
-        registerExtractorAPI(Haxloppd())
-        registerExtractorAPI(Minochinos()) 
-        registerExtractorAPI(GoTv())
-        
-        // registerExtractorAPI(Bysebuho())  <-- HAPUS INI
     }
 }
