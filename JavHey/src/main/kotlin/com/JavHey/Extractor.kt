@@ -7,10 +7,10 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.getAndUnpack // <--- PENTING: Import baru untuk bongkar kode
 import java.net.URI
 
-// --- DAFTAR SERVER (DoodStream Clones Only) ---
-// Bysebuho DIHAPUS karena menggunakan proteksi F75s (Fingerprint) yang bikin error timeout.
+// --- DAFTAR SERVER ---
 class Hglink : JavHeyDood("https://hglink.to", "Hglink")
 class Haxloppd : JavHeyDood("https://haxloppd.com", "Haxloppd")
 class Minochinos : JavHeyDood("https://minochinos.com", "Minochinos")
@@ -26,18 +26,21 @@ open class JavHeyDood(override var mainUrl: String, override var name: String) :
         subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // 1. Standarisasi URL (ubah /v/ menjadi /e/ agar dapat embed)
-        val targetUrl = url.replace("/v/", "/e/")
+        // 1. JANGAN ubah /v/ jadi /e/ lagi (Minochinos error kalau diubah)
+        val targetUrl = url 
         
         try {
-            // 2. Ambil halaman Embed
+            // 2. Ambil halaman
             val responseReq = app.get(targetUrl, referer = "https://javhey.com/")
-            val response = responseReq.text
-            
-            // 3. Dapatkan Domain Asli (PENTING untuk Haxloppd/Minochinos)
+            var response = responseReq.text
             val currentHost = "https://" + URI(responseReq.url).host
 
-            // 4. Cari endpoint pass_md5
+            // 3. FITUR BARU: Cek & Bongkar JavaScript (Solusi untuk Haxloppd & GoTv)
+            if (!response.contains("/pass_md5/")) {
+                 response = getAndUnpack(response) // Bongkar kode yang disembunyikan
+            }
+
+            // 4. Cari endpoint pass_md5 (Sekarang pasti ketemu)
             val md5Pattern = Regex("""/pass_md5/[^']*""")
             val md5Match = md5Pattern.find(response)?.value
 
@@ -47,11 +50,11 @@ open class JavHeyDood(override var mainUrl: String, override var name: String) :
                 // 5. Request Token
                 val tokenResponse = app.get(trueUrl, referer = targetUrl).text
 
-                // 6. Buat String acak & URL Video
+                // 6. Buat Link Video
                 val randomString = generateRandomString()
                 val videoUrl = "$tokenResponse$randomString?token=${md5Match.substringAfterLast("/")}&expiry=${System.currentTimeMillis()}"
 
-                // 7. Kirim link video
+                // 7. Kirim Link
                 M3u8Helper.generateM3u8(
                     name,
                     videoUrl,
@@ -59,7 +62,7 @@ open class JavHeyDood(override var mainUrl: String, override var name: String) :
                     headers = mapOf("Origin" to currentHost)
                 ).forEach(callback)
             } else {
-                // Fallback: Cari redirect langsung
+                // Fallback: Redirect langsung
                 val redirectMatch = Regex("""window\.location\.replace\('([^']*)'\)""").find(response)
                 if (redirectMatch != null) {
                     callback.invoke(
@@ -76,7 +79,6 @@ open class JavHeyDood(override var mainUrl: String, override var name: String) :
                 }
             }
         } catch (e: Exception) {
-            // Cegah error satu server mematikan server lain
             e.printStackTrace()
         }
     }
