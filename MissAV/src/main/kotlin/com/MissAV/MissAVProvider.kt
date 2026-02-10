@@ -14,30 +14,31 @@ class MissAVProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.NSFW)
 
     // --- 1. DEFINISI KATEGORI UTAMA ---
+    // Menggunakan variable dinamis agar tidak rusak jika 'dm628' berubah
     override val mainPage = mainPageOf(
         "$mainUrl/$lang/uncensored-leak" to "Kebocoran Tanpa Sensor",
         "$mainUrl/$lang/release" to "Keluaran Terbaru",
         "$mainUrl/$lang/new" to "Recent Update",
-        // Menggunakan %20 untuk spasi pada URL genre
         "$mainUrl/$lang/genres/Wanita%20Menikah/Ibu%20Rumah%20Tangga" to "Wanita Menikah"
     )
 
-    // --- 2. MAIN PAGE (Dipanggil untuk setiap kategori di atas) ---
+    // --- 2. MAIN PAGE (Updated Selector) ---
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        // request.data berisi URL dari daftar mainPage di atas
-        // request.name berisi Judul kategori (contoh: "Kebocoran Tanpa Sensor")
-        val document = app.get(request.data).document
+        // Support pagination: Tambahkan ?page=X jika page > 1
+        val url = if (page > 1) "${request.data}?page=$page" else request.data
+        
+        val document = app.get(url).document
         val homeItems = ArrayList<SearchResponse>()
 
-        document.select("div.grid div.group").forEach { element ->
-            val linkElement = element.selectFirst("a") ?: return@forEach
+        // UPDATE SELECTOR: Berdasarkan HTML, item ada di class "thumbnail"
+        document.select("div.thumbnail").forEach { element ->
+            val linkElement = element.selectFirst("a.text-secondary") ?: return@forEach
             val href = linkElement.attr("href")
             val fixedUrl = fixUrl(href)
             
-            val title = element.selectFirst("div.text-secondary")?.text()?.trim() 
-                ?: linkElement.attr("alt") 
-                ?: "No Title"
+            val title = linkElement.text().trim()
             
+            // Poster ada di elemen img sebelumnya
             val img = element.selectFirst("img")
             val posterUrl = img?.attr("data-src") ?: img?.attr("src")
 
@@ -46,11 +47,10 @@ class MissAVProvider : MainAPI() {
             })
         }
         
-        // Mengembalikan daftar video untuk kategori spesifik tersebut
         return newHomePageResponse(request.name, homeItems, isHorizontal = true)
     }
 
-    // --- 3. SEARCH ---
+    // --- 3. SEARCH (Updated Selector) ---
     override suspend fun search(query: String): List<SearchResponse> {
         val fixedQuery = query.trim().replace(" ", "-")
         val url = "$mainUrl/$lang/search/$fixedQuery"
@@ -59,14 +59,13 @@ class MissAVProvider : MainAPI() {
             val document = app.get(url).document
             val results = ArrayList<SearchResponse>()
 
-            document.select("div.grid div.group").forEach { element ->
-                val linkElement = element.selectFirst("a")
-                val href = linkElement?.attr("href") ?: return@forEach
+            // UPDATE SELECTOR: Sama dengan Main Page
+            document.select("div.thumbnail").forEach { element ->
+                val linkElement = element.selectFirst("a.text-secondary") ?: return@forEach
+                val href = linkElement.attr("href")
                 val fixedUrl = fixUrl(href)
                 
-                val title = element.selectFirst("div.text-secondary")?.text()?.trim() 
-                    ?: linkElement.attr("alt") 
-                    ?: "No Title"
+                val title = linkElement.text().trim()
                 
                 val img = element.selectFirst("img")
                 val posterUrl = img?.attr("data-src") ?: img?.attr("src")
@@ -86,11 +85,14 @@ class MissAVProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
 
+        // Mengambil judul dari h1
         val title = document.selectFirst("h1.text-base")?.text()?.trim() ?: "Unknown Title"
         
+        // Poster resolusi tinggi dari meta tag
         val poster = document.selectFirst("meta[property='og:image']")?.attr("content")
             ?: document.selectFirst("video.player")?.attr("poster")
 
+        // Deskripsi
         val description = document.selectFirst("div.text-secondary.mb-2")?.text()?.trim()
 
         return newMovieLoadResponse(title, url, TvType.NSFW, LinkData(url)) {
@@ -99,7 +101,7 @@ class MissAVProvider : MainAPI() {
         }
     }
 
-    // --- 5. LOAD LINKS (Pemutar Video) ---
+    // --- 5. LOAD LINKS (Player) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
