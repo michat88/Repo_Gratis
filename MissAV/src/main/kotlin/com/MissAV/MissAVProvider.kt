@@ -46,18 +46,24 @@ class MissAVProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // PERBAIKAN PENCARIAN (FINAL):
-        // Cukup trim() spasi. Cloudstream akan otomatis meng-encode spasi menjadi %20.
-        // Menambahkan header Referer agar request terlihat valid seperti browser.
-        val fixedQuery = query.trim()
+        // --- LOGIKA PENCARIAN FINAL (ANTI-BLOKIR) ---
+        // 1. Encoding Manual: Spasi -> %20 (Wajib, sesuai cURL browser)
+        val fixedQuery = query.trim().replace(" ", "%20")
         val url = "$mainUrl/$lang/search/$fixedQuery"
         
+        // 2. Headers Lengkap: Meniru Browser Chrome Android (Sesuai cURL)
+        val headers = mapOf(
+            "Referer" to "$mainUrl/",
+            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Sec-Fetch-Dest" to "document",
+            "Sec-Fetch-Mode" to "navigate",
+            "Sec-Fetch-Site" to "same-origin",
+            "Upgrade-Insecure-Requests" to "1"
+        )
+
         return try {
-            val document = app.get(
-                url, 
-                headers = mapOf("Referer" to "$mainUrl/")
-            ).document
-            
+            val document = app.get(url, headers = headers).document
             val results = ArrayList<SearchResponse>()
 
             document.select("div.thumbnail").forEach { element ->
