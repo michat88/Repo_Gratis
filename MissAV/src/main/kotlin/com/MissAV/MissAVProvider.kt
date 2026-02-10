@@ -20,13 +20,14 @@ class MissAVProvider : MainAPI() {
         "$mainUrl/$lang/genres/Wanita%20Menikah/Ibu%20Rumah%20Tangga" to "Wanita Menikah"
     )
 
-    // --- 2. MAIN PAGE (FIXED) ---
+    // --- 2. MAIN PAGE ---
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val url = if (page > 1) "${request.data}?page=$page" else request.data
         
         val document = app.get(url).document
         val homeItems = ArrayList<SearchResponse>()
 
+        // Selector disesuaikan dengan HTML yang kamu kirim (div.thumbnail)
         document.select("div.thumbnail").forEach { element ->
             val linkElement = element.selectFirst("a.text-secondary") ?: return@forEach
             val href = linkElement.attr("href")
@@ -41,12 +42,14 @@ class MissAVProvider : MainAPI() {
             })
         }
         
-        // PERBAIKAN: Membungkus item ke dalam HomePageList agar sesuai dengan error log
+        // PERBAIKAN PENTING:
+        // Kita bungkus manual ke HomePageList agar bisa set isHorizontalImages = true
+        // Sesuai definisi data class HomePageList di MainAPI.kt baris 539
         return newHomePageResponse(
             HomePageList(
                 name = request.name,
                 list = homeItems,
-                isHorizontal = true
+                isHorizontalImages = true 
             ),
             hasNext = true
         )
@@ -81,7 +84,7 @@ class MissAVProvider : MainAPI() {
         }
     }
 
-    // --- 4. LOAD (FIXED LinkData) ---
+    // --- 4. LOAD (DETAIL) ---
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
 
@@ -90,14 +93,15 @@ class MissAVProvider : MainAPI() {
             ?: document.selectFirst("video.player")?.attr("poster")
         val description = document.selectFirst("div.text-secondary.mb-2")?.text()?.trim()
 
-        // PERBAIKAN: Menghapus LinkData() dan langsung menggunakan string URL
+        // PERBAIKAN PENTING:
+        // Menghapus 'LinkData(url)'. MainAPI.kt baris 970 menunjukkan parameter 'data' bisa berupa String biasa.
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot = description
         }
     }
 
-    // --- 5. LOAD LINKS (FIXED Prerelease API) ---
+    // --- 5. LOAD LINKS (PLAYER) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -124,7 +128,10 @@ class MissAVProvider : MainAPI() {
 
                 val sourceName = if (fixedUrl.contains("surrit")) "Surrit (HD)" else "MissAV (Backup)"
 
-                // PERBAIKAN: Kembali menggunakan isM3u8 = true agar kompatibel dengan versi Stable
+                // PERBAIKAN PENTING:
+                // Kembali menggunakan konstruktor Legacy (isM3u8 = true)
+                // Ini sesuai dengan ExtractorLink di MainAPI.kt baris 632 (constructor lama)
+                // Agar tidak kena error "Prerelease API"
                 callback.invoke(
                     ExtractorLink(
                         source = this.name,
@@ -132,7 +139,7 @@ class MissAVProvider : MainAPI() {
                         url = fixedUrl,
                         referer = data,
                         quality = quality,
-                        isM3u8 = true 
+                        isM3u8 = true
                     )
                 )
             }
