@@ -19,7 +19,7 @@ import javax.crypto.spec.SecretKeySpec
  */
 object JavHeyExtractorManager {
     
-    // Konstanta Tag Provider untuk menghindari Typo (Dosen suka ini!)
+    // Konstanta Tag Provider
     private const val TAG_VIDHIDE = "VidHide"
     private const val TAG_EARNVIDS = "EarnVids"
     private const val TAG_MIXDROP = "MixDrop"
@@ -88,7 +88,6 @@ object JavHeyExtractorManager {
 
 // ============================================================================
 //  SECTION: CUSTOM EXTRACTOR CLASSES
-//  Dikelompokkan berdasarkan keluarga server untuk kemudahan maintenance.
 // ============================================================================
 
 // --- FAMILY: VIDHIDE / FILELIONS ---
@@ -172,8 +171,14 @@ open class StreamWishExtractor : ExtractorApi() {
         if (!file.isNullOrEmpty()) {
             generateM3u8(name, file, mainUrl, headers = headers).forEach(callback)
         } else {
-            // Fallback: WebView Resolver
-            val resolver = WebViewResolver(Regex("""txt|m3u8"""), listOf(Regex("""txt|m3u8""")), false, 15_000L)
+            // PERBAIKAN: Menggunakan Named Arguments agar tidak error tipe data
+            val resolver = WebViewResolver(
+                interceptUrl = Regex("""txt|m3u8"""), 
+                additionalUrls = listOf(Regex("""txt|m3u8""")), 
+                useOkhttp = false, 
+                timeout = 15_000L
+            )
+            
             val resUrl = app.get(url, referer = referer, interceptor = resolver).url
             if (resUrl.isNotEmpty()) generateM3u8(name, resUrl, mainUrl, headers = headers).forEach(callback)
         }
