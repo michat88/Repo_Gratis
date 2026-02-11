@@ -6,13 +6,13 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.network.WebViewResolver
 import org.jsoup.nodes.Document
-import java.net.URI
 import java.util.Base64
 import kotlinx.coroutines.*
 
 /**
- * MANAGER TURBO - Dibuat untuk kecepatan loading maksimal.
- * Langsung eksekusi link valid, buang link sampah/error.
+ * MANAGER TURBO (V3 Fixed)
+ * - Removed .copy() to fix compilation error.
+ * - Optimized parallel loading.
  */
 object JavHeyExtractorManager {
 
@@ -23,7 +23,7 @@ object JavHeyExtractorManager {
     ) {
         val rawUrls = mutableSetOf<String>()
 
-        // 1. Ambil Link Tersembunyi (Cepat)
+        // 1. Ambil Link Tersembunyi (Prioritas)
         try {
             document.selectFirst("input#links")?.attr("value")?.let { encrypted ->
                 if (encrypted.isNotEmpty()) {
@@ -36,7 +36,7 @@ object JavHeyExtractorManager {
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        // 2. Ambil Link Tombol (Fallback)
+        // 2. Ambil Link Tombol (Cadangan)
         try {
             document.select("div.links-download a").forEach { link ->
                 val href = link.attr("href").trim()
@@ -44,30 +44,31 @@ object JavHeyExtractorManager {
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        // 3. EKSEKUSI PARALEL (Biar Dosen Gak Nunggu Lama)
-        // Kita tidak pakai filter 'registeredProviders' lagi agar semua kualitas masuk ke Trek Video
+        // 3. EKSEKUSI PARALEL (Turbo Load)
         rawUrls.forEach { url ->
-            // Gunakan scope async agar tidak saling tunggu (Non-blocking)
             CoroutineScope(Dispatchers.IO).launch {
-                loadExtractor(url, subtitleCallback, callback)
+                try {
+                    loadExtractor(url, subtitleCallback, callback)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }
 
-    // Filter Cerdas: Membuang sampah yang bikin loading lama/error
+    // Filter Link Sampah/Lemot
     private fun isValidLink(url: String): Boolean {
         if (!url.startsWith("http")) return false
         val u = url.lowercase()
-        return !u.contains("emturbovid") &&  // Request User: Suka error
-               !u.contains("bestx.stream") && // Logcat: UnknownHostException
-               !u.contains("evosrv.com") &&   // Logcat: UnknownHostException
-               !u.contains("bysebuho")        // Proteksi lama
+        return !u.contains("emturbovid") &&
+               !u.contains("bestx.stream") &&
+               !u.contains("evosrv.com") &&
+               !u.contains("bysebuho")
     }
 }
 
 // ============================================================================
-//  SECTION: CUSTOM EXTRACTOR (Setting Quality: Unknown)
-//  Agar nama sumber jadi satu, tapi kualitas numpuk di dalam track video.
+//  SECTION: CUSTOM EXTRACTORS
 // ============================================================================
 
 // --- FAMILY: VIDHIDE / FILELIONS ---
@@ -89,17 +90,14 @@ open class VidHidePro : ExtractorApi() {
     override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val headers = mapOf("Origin" to mainUrl, "User-Agent" to USER_AGENT)
         val response = app.get(getEmbedUrl(url), referer = referer)
-        
-        // Optimasi: Langsung cari m3u8 tanpa parsing json ribet jika ada di teks mentah
         val text = response.text
         val script = if (text.contains("eval(function")) getAndUnpack(text) else text
         
         Regex(":\\s*\"(.*?m3u8.*?)\"").findAll(script).forEach { m3u8Match ->
             val hlsUrl = fixUrl(m3u8Match.groupValues[1])
-            generateM3u8(name, hlsUrl, referer = "$mainUrl/", headers = headers).forEach { link ->
-                // TRICK: Pakai Unknown value agar CloudStream menggabungkan source
-                callback(link.copy(quality = Qualities.Unknown.value))
-            }
+            // FIX: Hapus .copy(), pass link langsung.
+            // CloudStream akan otomatis menggabungkan link dengan nama "VidHidePro" ke dalam satu grup.
+            generateM3u8(name, hlsUrl, referer = "$mainUrl/", headers = headers).forEach(callback)
         }
     }
     private fun getEmbedUrl(url: String): String {
@@ -126,7 +124,7 @@ open class MixDrop : ExtractorApi() {
         srcRegex.find(unpacked)?.groupValues?.get(1)?.let { link ->
             return listOf(newExtractorLink(name, name, httpsify(link)) {
                 this.referer = url
-                // TRICK: Unknown Quality
+                // Request: Unknown Quality agar rapi
                 this.quality = Qualities.Unknown.value 
             })
         }
@@ -140,7 +138,6 @@ class Dwish : StreamWishExtractor() { override val name = "Dwish"; override val 
 class Streamwish2 : StreamWishExtractor() { override val mainUrl = "https://streamwish.site" }
 class WishembedPro : StreamWishExtractor() { override val name = "Wishembed"; override val mainUrl = "https://wishembed.pro" }
 class Wishfast : StreamWishExtractor() { override val name = "Wishfast"; override val mainUrl = "https://wishfast.top" }
-// Swdyu (Logcat shows this works but timeouts often, kept for backup)
 class Swdyu : StreamWishExtractor() { override val name = "Swdyu"; override val mainUrl = "https://swdyu.com" }
 
 open class StreamWishExtractor : ExtractorApi() {
@@ -156,22 +153,19 @@ open class StreamWishExtractor : ExtractorApi() {
         val file = Regex("""file:\s*"(.*?m3u8.*?)"""").find(script)?.groupValues?.getOrNull(1)
 
         if (!file.isNullOrEmpty()) {
-            generateM3u8(name, file, mainUrl, headers = headers).forEach { link ->
-                callback(link.copy(quality = Qualities.Unknown.value))
-            }
+            // FIX: Hapus .copy()
+            generateM3u8(name, file, mainUrl, headers = headers).forEach(callback)
         } else {
-            // Fallback: WebView (Agak lambat, tapi kadang diperlukan)
+            // Fallback: WebView dengan Timeout 10 Detik
             val resolver = WebViewResolver(
                 interceptUrl = Regex("""txt|m3u8"""), 
                 additionalUrls = listOf(Regex("""txt|m3u8""")), 
                 useOkhttp = false, 
-                timeout = 10_000L // Timeout dipercepat biar gak bengong
+                timeout = 10_000L
             )
             val resUrl = app.get(url, referer = referer, interceptor = resolver).url
             if (resUrl.isNotEmpty()) {
-                generateM3u8(name, resUrl, mainUrl, headers = headers).forEach { link ->
-                    callback(link.copy(quality = Qualities.Unknown.value))
-                }
+                generateM3u8(name, resUrl, mainUrl, headers = headers).forEach(callback)
             }
         }
     }
@@ -214,7 +208,6 @@ open class DoodLaExtractor : ExtractorApi() {
         
         callback.invoke(newExtractorLink(name, name, trueUrl) { 
             this.referer = "$mainUrl/"
-            // TRICK: Unknown Quality
             this.quality = Qualities.Unknown.value 
         })
     }
@@ -234,7 +227,6 @@ open class LuluStream : ExtractorApi() {
             Regex("file:\"(.*)\"").find(script)?.groupValues?.get(1)?.let { link ->
                 callback(newExtractorLink(name, name, link) { 
                     this.referer = mainUrl
-                    // TRICK: Unknown Quality
                     this.quality = Qualities.Unknown.value 
                 })
             }
