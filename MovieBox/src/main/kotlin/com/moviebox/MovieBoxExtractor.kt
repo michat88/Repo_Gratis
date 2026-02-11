@@ -23,12 +23,12 @@ class MovieBoxExtractor : ExtractorApi() {
             if (videoUrl.isNotEmpty()) {
                 callback.invoke(
                     ExtractorLink(
-                        name,
-                        name,
-                        videoUrl,
-                        referer ?: mainUrl,
-                        getQualityFromName(source.attr("label") ?: source.attr("data-quality") ?: ""),
-                        videoUrl.contains(".m3u8")
+                        source = name,
+                        name = name,
+                        url = videoUrl,
+                        referer = referer ?: mainUrl,
+                        quality = getQualityFromName(source.attr("label") ?: source.attr("data-quality") ?: ""),
+                        type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     )
                 )
             }
@@ -51,12 +51,12 @@ class MovieBoxExtractor : ExtractorApi() {
                 val videoUrl = match.groupValues[1]
                 callback.invoke(
                     ExtractorLink(
-                        name,
-                        "$name HLS",
-                        videoUrl,
-                        referer ?: mainUrl,
-                        Qualities.Unknown.value,
-                        true
+                        source = name,
+                        name = "$name HLS",
+                        url = videoUrl,
+                        referer = referer ?: mainUrl,
+                        quality = Qualities.Unknown.value,
+                        type = ExtractorLinkType.M3U8
                     )
                 )
             }
@@ -67,12 +67,12 @@ class MovieBoxExtractor : ExtractorApi() {
                 val quality = Regex("""(\d{3,4})p?""").find(videoUrl)?.groupValues?.get(1)?.toIntOrNull()
                 callback.invoke(
                     ExtractorLink(
-                        name,
-                        "$name MP4",
-                        videoUrl,
-                        referer ?: mainUrl,
-                        quality ?: Qualities.Unknown.value,
-                        false
+                        source = name,
+                        name = "$name MP4",
+                        url = videoUrl,
+                        referer = referer ?: mainUrl,
+                        quality = quality ?: Qualities.Unknown.value,
+                        type = ExtractorLinkType.VIDEO
                     )
                 )
             }
@@ -91,12 +91,12 @@ class MovieBoxExtractor : ExtractorApi() {
                         val videoUrl = urlMatch.groupValues[1]
                         callback.invoke(
                             ExtractorLink(
-                                name,
-                                name,
-                                videoUrl,
-                                referer ?: mainUrl,
-                                Qualities.Unknown.value,
-                                videoUrl.contains(".m3u8")
+                                source = name,
+                                name = name,
+                                url = videoUrl,
+                                referer = referer ?: mainUrl,
+                                quality = Qualities.Unknown.value,
+                                type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                             )
                         )
                     }

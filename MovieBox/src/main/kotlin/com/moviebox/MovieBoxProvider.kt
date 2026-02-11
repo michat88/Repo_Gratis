@@ -120,7 +120,7 @@ class MovieBoxProvider : MainAPI() {
                 val season = ep.selectFirst(".season-number")?.text()?.trim()
                     ?.replace(Regex("[^0-9]"), "")?.toIntOrNull() ?: 1
                 
-                Episode(
+                newEpisode(
                     data = epHref,
                     name = epName,
                     episode = epNum,
@@ -132,7 +132,7 @@ class MovieBoxProvider : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.rating = rating
+                this.showStatus = ShowStatus.Ongoing
                 this.tags = tags
                 addActors(actors)
                 addTrailer(trailerUrl)
@@ -143,7 +143,6 @@ class MovieBoxProvider : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.rating = rating
                 this.tags = tags
                 addActors(actors)
                 addTrailer(trailerUrl)
@@ -173,12 +172,12 @@ class MovieBoxProvider : MainAPI() {
             if (videoUrl.isNotEmpty()) {
                 callback.invoke(
                     ExtractorLink(
-                        name,
-                        name,
-                        videoUrl,
-                        mainUrl,
-                        Qualities.Unknown.value,
-                        videoUrl.contains(".m3u8")
+                        source = name,
+                        name = name,
+                        url = videoUrl,
+                        referer = mainUrl,
+                        quality = Qualities.Unknown.value,
+                        type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     )
                 )
             }
@@ -191,12 +190,12 @@ class MovieBoxProvider : MainAPI() {
             
             callback.invoke(
                 ExtractorLink(
-                    "$name Download",
-                    "$name Download",
-                    dlUrl,
-                    mainUrl,
-                    quality ?: Qualities.Unknown.value,
-                    false
+                    source = "$name Download",
+                    name = "$name Download",
+                    url = dlUrl,
+                    referer = mainUrl,
+                    quality = quality?.value ?: Qualities.Unknown.value,
+                    type = ExtractorLinkType.VIDEO
                 )
             )
         }
@@ -210,12 +209,12 @@ class MovieBoxProvider : MainAPI() {
                 val videoUrl = match.groupValues[1]
                 callback.invoke(
                     ExtractorLink(
-                        name,
-                        "$name HLS",
-                        videoUrl,
-                        mainUrl,
-                        Qualities.Unknown.value,
-                        true
+                        source = name,
+                        name = "$name HLS",
+                        url = videoUrl,
+                        referer = mainUrl,
+                        quality = Qualities.Unknown.value,
+                        type = ExtractorLinkType.M3U8
                     )
                 )
             }
@@ -225,12 +224,12 @@ class MovieBoxProvider : MainAPI() {
                 val videoUrl = match.groupValues[1]
                 callback.invoke(
                     ExtractorLink(
-                        name,
-                        "$name MP4",
-                        videoUrl,
-                        mainUrl,
-                        Qualities.Unknown.value,
-                        false
+                        source = name,
+                        name = "$name MP4",
+                        url = videoUrl,
+                        referer = mainUrl,
+                        quality = Qualities.Unknown.value,
+                        type = ExtractorLinkType.VIDEO
                     )
                 )
             }
