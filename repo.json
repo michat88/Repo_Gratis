@@ -1,0 +1,9 @@
+{
+    "name": "RepoGratis",
+    "iconUrl": "https://raw.githubusercontent.com/michat88/Zaneta/refs/heads/main/Icons/RepoIcon.png",
+    "description": "AmanGacor Repository",
+    "manifestVersion": 1,
+    "pluginLists": [
+      "https://raw.githubusercontent.com/michat88/Repo_Gratis/refs/heads/builds/plugins.json"
+    ]
+}
