@@ -18,12 +18,10 @@ cloudstream {
      * */
     status = 1 // will be 3 if unspecified
     tvTypes = listOf(
-        "AsianDrama",
-        "TvSeries",
-        "Movie",
+        "Anime",
     )
 
 
-    iconUrl = "https://klikxxi.me/wp-content/uploads/2024/02/cropped-site-icon.png"
+    iconUrl = "https://v8.kuramanime.blog/assets/img/logo-full-512.png"
 
 }
