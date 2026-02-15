@@ -39,8 +39,6 @@ class Kuramanime : MainAPI() {
         val title = element.selectFirst("h5.sidebar-title-h5")?.text()?.trim() ?: return null
         var href = fixUrl(element.attr("href"))
         
-        // Membersihkan URL agar masuk ke halaman list episode, bukan langsung ke episode spesifik
-        // Contoh: .../episode/6 -> .../
         if (href.contains("/episode/")) {
             val epsIndex = href.indexOf("/episode/")
             href = href.substring(0, epsIndex)
@@ -52,7 +50,10 @@ class Kuramanime : MainAPI() {
 
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
-            addQuality(epText)
+            // PERBAIKAN ERROR 1: Cek null sebelum addQuality
+            if (epText != null) {
+                addQuality(epText)
+            }
         }
     }
 
@@ -70,39 +71,33 @@ class Kuramanime : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        // Mengambil Judul
-        // Dari Breadcrumb: Beranda > Anime > Judul
-        // HTML kamu: <div class="breadcrumb__links"> ... <a>Judul</a> ... </div>
-        // Kita ambil elemen <a> ketiga (index 2) atau cari judul di meta tag
         val title = document.select("meta[property=og:title]").attr("content")
             .replace("Subtitle Indonesia - Kuramanime", "")
-            .replace(Regex("\\(Episode.*\\)"), "") // Hapus tulisan (Episode XX)
+            .replace(Regex("\\(Episode.*\\)"), "")
             .trim()
 
-        // Mengambil Gambar
         val poster = document.select("meta[property=og:image]").attr("content")
-
-        // Mengambil Deskripsi
-        // HTML kamu menaruh keywords di content__tags, tapi biasanya ada div sinopsis.
-        // Kita coba ambil dari meta description sebagai fallback
         val description = document.select("meta[name=description]").attr("content")
 
-        // Mengambil Episode
-        // Selector ID: #animeEpisodes, Class: .ep-button
+        // PERBAIKAN ERROR 2: Menggunakan newEpisode()
         val episodes = document.select("#animeEpisodes a.ep-button").mapNotNull { ep ->
             val epUrl = fixUrl(ep.attr("href"))
-            val epName = ep.text().trim() // Hasil: "Ep 1", "Ep 6"
-            
-            // Mengambil nomor episode dari text "Ep 6" -> 6
+            val epName = ep.text().trim()
             val epNum = Regex("\\d+").find(epName)?.value?.toIntOrNull()
 
-            Episode(epUrl, name = epName, episode = epNum)
-        }.reversed() // Membalik urutan agar episode terbaru ada di atas (opsional)
+            // Gunakan builder pattern newEpisode
+            newEpisode(epUrl) {
+                this.name = epName
+                this.episode = epNum
+            }
+        }.reversed()
 
         return newAnimeLoadResponse(title, url, TvType.Anime) {
             this.posterUrl = poster
             this.plot = description
-            addEpisodes(episodes)
+            
+            // PERBAIKAN ERROR 3: Menambahkan DubStatus (Subbed) sebagai parameter pertama
+            addEpisodes(DubStatus.Subbed, episodes)
         }
     }
 
@@ -116,47 +111,26 @@ class Kuramanime : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         
-        // Request halaman episode awal
         val document = app.get(data).document
-
-        // Kuramanime menggunakan AJAX, tapi kita bisa mencoba mengambil list server dari dropdown
-        // ID: changeServer
         val serverOptions = document.select("select#changeServer option")
 
-        // Loop setiap server yang tersedia (Kuramadrive, Doodstream, Filemoon, dll)
         serverOptions.forEach { option ->
-            val serverName = option.text() // Contoh: DoodStream (kencang, iklan popup)
-            val serverValue = option.attr("value") // Contoh: doodstream
+            val serverName = option.text()
+            val serverValue = option.attr("value")
             
-            // Skip server yang biasanya ribet atau butuh login premium
             if (serverValue == "kuramadrive" && serverName.contains("vip", true)) return@forEach
 
-            // Mencoba merequest URL dengan parameter server
-            // Biasanya formatnya: URL_EPISODE?server=serverValue
-            // Atau URL_EPISODE?server_id=serverValue
-            // Kita coba tebak parameternya "?server="
             val serverUrl = "$data?server=$serverValue"
             
             try {
                 val serverPage = app.get(serverUrl).document
-                
-                // Cari iframe di dalam respon halaman server tersebut
                 val iframeSrc = serverPage.select("iframe").attr("src")
                 
                 if (iframeSrc.isNotEmpty()) {
-                    // Masukkan ke loadExtractor bawaan CloudStream untuk diproses
                     loadExtractor(iframeSrc, data, subtitleCallback, callback)
                 } 
-                
-                // Cek khusus jika servernya Kuramadrive (seringkali direct link atau obfuscated)
-                if (serverValue.contains("kuramadrive")) {
-                    // Logic khusus kuramadrive (jika ada script hidden)
-                    // Karena HTML kamu menunjukkan error di player, kemungkinan ini butuh header khusus
-                    // atau token. Untuk sekarang kita skip deep extraction Kuramadrive tanpa JS.
-                }
-
             } catch (e: Exception) {
-                // Ignore error jika gagal fetch satu server
+                // Ignore error
             }
         }
 
