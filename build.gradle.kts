@@ -47,12 +47,14 @@ subprojects {
             minSdk = 21
             compileSdkVersion(35)
             targetSdk = 35
+
         }
 
         compileOptions {
             sourceCompatibility = JavaVersion.VERSION_1_8
             targetCompatibility = JavaVersion.VERSION_1_8
         }
+
 
         tasks.withType<KotlinJvmCompile> {
             compilerOptions {
@@ -61,7 +63,7 @@ subprojects {
                     "-Xno-call-assertions",
                     "-Xno-param-assertions",
                     "-Xno-receiver-assertions",
-                    "-Xannotation-default-target=param-property"
+                    "-Xannotation-default-target=param-property" // <--- INI TAMBAHANNYA
                 )
             }
         }
@@ -70,9 +72,7 @@ subprojects {
     dependencies {
         val implementation by configurations
         val cloudstream by configurations
-        
-        // KEMBALI KE VERSI LAMA (Biar file lain gak error)
-        cloudstream("com.lagradost:cloudstream3:pre-release") 
+        cloudstream("com.lagradost:cloudstream3:pre-release")
 
         // Other dependencies
         implementation(kotlin("stdlib"))
